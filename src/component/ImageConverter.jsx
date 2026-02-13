@@ -6,17 +6,18 @@ import {
     message,
     Slider,
     InputNumber,
-    Switch,
     Card,
     Row,
     Col,
-    Statistic,
     Divider,
+    Table,
+    Progress,
 } from "antd";
-import { InboxOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { ThunderboltOutlined } from "@ant-design/icons";
 import { useState } from "react";
-
-const { Dragger } = Upload;
+import JSZip from "jszip";
+import { saveAs } from "file-saver";
+import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd"
 
 function ImageConverter() {
     const [fileList, setFileList] = useState([]);
@@ -24,137 +25,203 @@ function ImageConverter() {
     const [quality, setQuality] = useState(0.9);
     const [width, setWidth] = useState(null);
     const [height, setHeight] = useState(null);
-    //   const [darkMode, setDarkMode] = useState(false);
-    const [sizeStats, setSizeStats] = useState(null);
+    const [progress, setProgress] = useState(0);
+    const [tableData, setTableData] = useState([]);
 
-    const handleFileChange = ({ fileList: newFileList }) => {
+    // Drag reorder handler
+    const onDragEnd = (result) => {
+        if (!result.destination) return;
+        const items = Array.from(fileList);
+        const [reorderedItem] = items.splice(result.source.index, 1);
+        items.splice(result.destination.index, 0, reorderedItem);
+        setFileList(items);
+    };
+
+    const handleUploadChange = ({ fileList: newFileList }) => {
         setFileList(newFileList);
     };
 
-    const convertImage = async (values) => {
-        if (fileList.length === 0) {
-            message.error("Upload at least one image.");
-            return;
-        }
+  const convertImage = async (values) => {
+  if (!fileList.length) {
+    message.error("Upload at least one image.");
+    return;
+  }
 
-        setLoading(true);
+  // 🔴 NEW CONDITION: Check if all files already in same format
+  const selectedFormat = values.format.split("/").pop(); // jpeg, png, etc.
 
-        let totalOriginal = 0;
-        let totalConverted = 0;
+  const sameFormatFiles = fileList.filter((fileItem) => {
+    const fileExtension = fileItem.originFileObj.name
+      .split(".")
+      .pop()
+      .toLowerCase();
 
-        for (let fileItem of fileList) {
-            const file = fileItem.originFileObj;
-            totalOriginal += file.size;
+    return fileExtension === selectedFormat;
+  });
 
-            const image = new Image();
-            image.src = URL.createObjectURL(file);
+  if (sameFormatFiles.length === fileList.length) {
+    message.error(
+      `All uploaded images are already in ${selectedFormat.toUpperCase()} format.`
+    );
+    return;
+  }
 
-            await new Promise((resolve) => {
-                image.onload = () => {
-                    const canvas = document.createElement("canvas");
-                    const newWidth = width || image.width;
-                    const newHeight = height || image.height;
+  setLoading(true);
+  setProgress(0);
 
-                    canvas.width = newWidth;
-                    canvas.height = newHeight;
+  const zip = new JSZip();
+  let results = [];
 
-                    const ctx = canvas.getContext("2d");
-                    ctx.drawImage(image, 0, 0, newWidth, newHeight);
+  for (let i = 0; i < fileList.length; i++) {
+    const file = fileList[i].originFileObj;
+    const fileExtension = file.name.split(".").pop().toLowerCase();
 
-                    const finalImage =
-                        values.format === "image/jpeg" ||
-                            values.format === "image/webp" ||
-                            values.format === "image/avif"
-                            ? canvas.toDataURL(values.format, quality)
-                            : canvas.toDataURL(values.format);
+    // 🔴 Skip file if already same format
+    if (fileExtension === selectedFormat) {
+      message.warning(`${file.name} is already ${selectedFormat}`);
+      continue;
+    }
 
-                    const convertedSize = finalImage.length * 0.75;
-                    totalConverted += convertedSize;
+    const image = new Image();
+    image.src = URL.createObjectURL(file);
 
-                    const link = document.createElement("a");
-                    link.href = finalImage;
-                    link.download = `${file.name.split(".")[0]}.${values.format
-                        .split("/")
-                        .pop()}`;
-                    link.click();
+    await new Promise((resolve) => {
+      image.onload = async () => {
+        const canvas = document.createElement("canvas");
+        const newWidth = width || image.width;
+        const newHeight = height || image.height;
 
-                    resolve();
-                };
-            });
-        }
+        canvas.width = newWidth;
+        canvas.height = newHeight;
 
-        setSizeStats({
-            original: (totalOriginal / 1024).toFixed(2),
-            converted: (totalConverted / 1024).toFixed(2),
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(image, 0, 0, newWidth, newHeight);
+
+        const base64 =
+          values.format === "image/jpeg" ||
+          values.format === "image/webp" ||
+          values.format === "image/avif"
+            ? canvas.toDataURL(values.format, quality)
+            : canvas.toDataURL(values.format);
+
+        const blob = await (await fetch(base64)).blob();
+
+        zip.file(
+          `${file.name.split(".")[0]}.${selectedFormat}`,
+          blob
+        );
+
+        results.push({
+          key: i,
+          name: file.name,
+          original: (file.size / 1024).toFixed(2),
+          converted: (blob.size / 1024).toFixed(2),
         });
 
-        setLoading(false);
-        message.success("✨ All images converted successfully!");
-    };
+        setProgress(Math.round(((i + 1) / fileList.length) * 100));
+        resolve();
+      };
+    });
+  }
+
+  if (!results.length) {
+    setLoading(false);
+    return;
+  }
+
+  setTableData(results);
+
+  const zipBlob = await zip.generateAsync({ type: "blob" });
+  saveAs(zipBlob, "converted-images.zip");
+
+  setLoading(false);
+  message.success("✨ Converted & Downloaded as ZIP!");
+};
+
+
+
+    const columns = [
+        { title: "File Name", dataIndex: "name" },
+        { title: "Original (KB)", dataIndex: "original" },
+        { title: "Converted (KB)", dataIndex: "converted" },
+    ];
 
     const options = [
         { label: "JPEG", value: "image/jpeg" },
         { label: "PNG", value: "image/png" },
         { label: "WEBP", value: "image/webp" },
         { label: "AVIF", value: "image/avif" },
-        { label: "BMP", value: "image/bmp" },
     ];
 
     return (
-        <div
-            className={`min-h-screen flex items-center justify-center p-6 transition-all duration-500 }`}
-        >
-            <Card
-                className={`w-full max-w-3xl backdrop-blur-xl bg-white/70 rounded-2xl border-0 transition-all }`}
-                title={
-                    <div className="flex justify-between items-center">
-                        <h1 className="lg:text-3xl sm:text-2xl font-bold bg-gradient-to-r from-indigo-500 to-purple-600 bg-clip-text text-transparent">
-                            Multiple Images Converter
-                        </h1>
+        <div className="min-h-screen flex items-center justify-center p-6">
+            <Card className="w-full max-w-4xl rounded-2xl shadow-xl">
+                <h1 className="text-3xl font-bold text-center mb-6">
+                    Multiple Images Converter
+                </h1>
 
-                    </div>
-                }
-            >
                 <Form layout="vertical" onFinish={convertImage}>
-                    {/* Upload Section */}
+                    {/* Thumbnail Grid + Drag Reorder */}
                     <Form.Item label="Upload Images">
-                        <Dragger
+                        <Upload
+                            listType="picture-card"
                             multiple
                             beforeUpload={() => false}
                             fileList={fileList}
-                            onChange={handleFileChange}
-                            accept="image/*"
-                            className="rounded-xl border-dashed border-2 hover:border-indigo-500 transition-all"
+                            onChange={handleUploadChange}
+                            showUploadList={{
+                                showPreviewIcon: false,   // 👁 Hide eye icon
+                            }}
                         >
-                            <p className="text-4xl text-indigo-500">
-                                <InboxOutlined />
-                            </p>
-                            <p className="font-medium text-base sm:text-sm">
-                                Drag & Drop or Click to Upload
-                            </p>
-                            <p className="text-sm opacity-70">
-                                Supports multiple images upload
-                            </p>
-                        </Dragger>
+                            {fileList.length < 20 && "+ Upload"}
+                        </Upload>
+
+                        {/* Drag reorder */}
+                        <DragDropContext onDragEnd={onDragEnd}>
+                            <Droppable droppableId="files" direction="horizontal">
+                                {(provided) => (
+                                    <div
+                                        className="flex flex-wrap gap-2 mt-4"
+                                        {...provided.droppableProps}
+                                        ref={provided.innerRef}
+                                    >
+                                        {fileList.map((file, index) => (
+                                            <Draggable
+                                                key={file.uid}
+                                                draggableId={file.uid}
+                                                index={index}
+                                            >
+                                                {(provided) => (
+                                                    <div
+                                                        ref={provided.innerRef}
+                                                        {...provided.draggableProps}
+                                                        {...provided.dragHandleProps}
+                                                        className="border rounded p-2 bg-gray-100 cursor-move"
+                                                    >
+                                                        {file.name}
+                                                    </div>
+                                                )}
+                                            </Draggable>
+                                        ))}
+                                        {provided.placeholder}
+                                    </div>
+                                )}
+                            </Droppable>
+                        </DragDropContext>
                     </Form.Item>
 
-                    {/* Format + Quality */}
                     <Row gutter={[16, 16]}>
-                        <Col xs={24} sm={24} md={12}>
+                        <Col xs={24} md={12}>
                             <Form.Item
                                 label="Convert To"
                                 name="format"
-                                rules={[{ required: true, message: "Select format" }]}
+                                rules={[{ required: true }]}
                             >
-                                <Select
-                                    options={options}
-                                    size="large"
-                                    placeholder="Choose your format"
-                                />
+                                <Select options={options} size="large" placeholder="Choose Your Image format" />
                             </Form.Item>
                         </Col>
 
-                        <Col xs={24} sm={24} md={12}>
+                        <Col xs={24} md={12}>
                             <Form.Item label="Quality">
                                 <Slider
                                     min={0.1}
@@ -167,28 +234,23 @@ function ImageConverter() {
                         </Col>
                     </Row>
 
-                    {/* Resize Fields */}
                     <Row gutter={[16, 16]}>
-                        <Col xs={24} sm={24} md={12}>
+                        <Col xs={24} md={12}>
                             <Form.Item label="Width">
                                 <InputNumber
                                     min={1}
-                                    placeholder="Width"
                                     onChange={setWidth}
                                     style={{ width: "100%" }}
-                                    size="large"
                                 />
                             </Form.Item>
                         </Col>
 
-                        <Col xs={24} sm={24} md={12}>
+                        <Col xs={24} md={12}>
                             <Form.Item label="Height">
                                 <InputNumber
                                     min={1}
-                                    placeholder="Height"
                                     onChange={setHeight}
                                     style={{ width: "100%" }}
-                                    size="large"
                                 />
                             </Form.Item>
                         </Col>
@@ -196,41 +258,28 @@ function ImageConverter() {
 
                     <Divider />
 
-                    {/* Convert Button */}
-                    <Form.Item>
-                        <Button
-                            type="primary"
-                            htmlType="submit"
-                            block
-                            size="large"
-                            loading={loading}
-                            disabled={fileList.length === 0}
-                            icon={<ThunderboltOutlined />}
-                            className="rounded-xl h-12 text-lg bg-gradient-to-r from-indigo-500 to-purple-600 border-0 hover:scale-105 transition-transform"
-                        >
-                            Convert All Images
-                        </Button>
-                    </Form.Item>
+                    <Button
+                        type="primary"
+                        htmlType="submit"
+                        block
+                        size="large"
+                        loading={loading}
+                        icon={<ThunderboltOutlined />}
+                    >
+                        Download ZIP
+                    </Button>
 
-                    {/* Size Stats */}
-                    {sizeStats && (
-                        <Row gutter={[16, 16]} className="mt-6 text-center">
-                            <Col xs={24} sm={12}>
-                                <Statistic
-                                    title="Original Size (KB)"
-                                    value={sizeStats.original}
-                                />
-                            </Col>
-                            <Col xs={24} sm={12}>
-                                <Statistic
-                                    title="Converted Size (KB)"
-                                    value={sizeStats.converted}
-                                />
-                            </Col>
-                        </Row>
+                    {loading && <Progress percent={progress} className="mt-4" />}
+
+                    {tableData.length > 0 && (
+                        <Table
+                            columns={columns}
+                            dataSource={tableData}
+                            pagination={false}
+                            className="mt-6"
+                        />
                     )}
                 </Form>
-
             </Card>
         </div>
     );
