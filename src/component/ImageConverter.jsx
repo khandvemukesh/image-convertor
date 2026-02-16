@@ -155,9 +155,9 @@ function ImageConverter() {
     return (
         <div className="min-h-screen flex items-center justify-center p-6">
             <Card className="w-full max-w-4xl rounded-2xl">
-                <h1 className="text-3xl font-bold text-center mb-6">
+                <h2 className="text-2xl font-bold text-center mb-6">
                     Multiple Images Converter
-                </h1>
+                </h2>
 
                 <Form layout="vertical" onFinish={convertImage}>
                     {/* Thumbnail Grid + Drag Reorder */}

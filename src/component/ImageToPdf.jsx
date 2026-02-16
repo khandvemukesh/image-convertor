@@ -26,7 +26,7 @@ function ImageToPdf() {
     const [previewUrl, setPreviewUrl] = useState(null);
     const [previewVisible, setPreviewVisible] = useState(false);
 
- // Drag reorder
+    // Drag reorder
     const handleDrag = (result) => {
         if (!result.destination) return;
         const items = Array.from(files);
@@ -118,14 +118,18 @@ function ImageToPdf() {
 
     return (
         <div className={"text-white p-6 rounded-2xl"}>
+              
             <Card className="rounded-2xl">
+                <h2 className="text-2xl font-bold text-center !mb-4">
+                    Image to PDF Converter
+                </h2>
                 <Form layout="vertical">
                     <Form.Item label="Upload Images">
                         <Upload
                             multiple
                             beforeUpload={() => false}
                             accept="image/*"
-                            showUploadList={false} 
+                            showUploadList={false}
                             onChange={(info) =>
                                 setFiles(info.fileList.map(f => f.originFileObj))
                             }

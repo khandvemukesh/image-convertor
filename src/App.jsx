@@ -2,9 +2,9 @@ import "animate.css";
 import "antd/dist/reset.css"; 
 import { Card, Tabs } from "antd";
 import ImageConverter from "./component/ImageConverter";
-import AdvancedPdfConverter from "./component/AdvancedPdfConverter";
 import ImageToPDF from "./component/ImageToPdf";
-import PdfToDocument from "./component/PdfToDocument";
+import TextToPdf from "./component/TextToPdf";
+import ImageToExcel from "./component/ImageToExcel";
 
 
 function App() {
@@ -22,13 +22,13 @@ function App() {
     },
      {
       key: "3", // 
-      label: "PDF to CSV",
-      children: <AdvancedPdfConverter />,
+      label: "Text to PDF",
+      children: <TextToPdf />,
     },
      {
       key: "4", // 
-      label: "PDF to Document",
-      children: <PdfToDocument />,
+      label: "Image to Excel",
+      children: <ImageToExcel />,
     }
   ];
 
